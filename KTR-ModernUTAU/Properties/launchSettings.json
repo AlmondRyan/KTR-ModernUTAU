@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "KTR-ModernUTAU (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "KTR-ModernUTAU (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

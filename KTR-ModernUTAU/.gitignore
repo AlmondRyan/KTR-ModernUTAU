@@ -1,0 +1,5 @@
+﻿bin/
+obj/
+./.vs/
+./.idea/
+KTR-ModernUTAU.csproj.user
