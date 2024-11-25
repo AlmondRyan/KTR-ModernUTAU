@@ -94,49 +94,77 @@ public class PianoRollFX extends VBox implements PianoRollInterface {
         HBox toolbar = createToolbar();
         
         // 创建主要内容区域
-        VBox mainContent = new VBox(0); // 设置spacing为0
-        
-        // 创建钢琴键和网格区域
-        HBox contentArea = new HBox(0); // 设置spacing为0
-        
-        // 创建钢琴键画布
-        pianoCanvas = new Canvas(KEY_WIDTH, TOTAL_KEYS * KEY_HEIGHT);
-        
-        // 创建网格区域
-        VBox gridContainer = new VBox(0); // 设置spacing为0
+        VBox mainContent = new VBox(0);
         
         // 创建网格头部
         gridHeader = new GridHeader(BEATS_PER_BAR, PIXELS_PER_BEAT, horizontalZoom, totalBars, 2000);
         
-        // 创建网格画布和滚动区域
+        // 创建内容区域的容器
+        HBox contentArea = new HBox(0);
+        
+        // 创建钢琴键画布和容器
+        pianoCanvas = new Canvas(KEY_WIDTH, TOTAL_KEYS * KEY_HEIGHT);
+        Pane pianoContainer = new Pane(pianoCanvas);
+        pianoContainer.setMinWidth(KEY_WIDTH);
+        pianoContainer.setPrefWidth(KEY_WIDTH);
+        pianoContainer.setMaxWidth(KEY_WIDTH);
+        
+        // 创建网格画布和容器
         gridCanvas = new Canvas(2000, TOTAL_KEYS * KEY_HEIGHT);
         gridPane = new Pane(gridCanvas);
-        gridScrollPane = new ScrollPane(gridPane);
-        gridScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        gridScrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         
-        // 创建钢琴键区域，添加一个与GridHeader等高的空白区域
-        VBox pianoContainer = new VBox(0);
-        Region headerSpace = new Region();
-        headerSpace.setPrefHeight(GridHeader.getHeaderHeight());
-        pianoContainer.getChildren().addAll(headerSpace, pianoCanvas);
+        // 创建滚动视图
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.ALWAYS);
         
-        // 组装网格区域
-        gridContainer.getChildren().addAll(gridHeader, gridScrollPane);
-        HBox.setHgrow(gridContainer, Priority.ALWAYS);
+        // 创建包含钢琴键和网格的容器
+        HBox scrollContent = new HBox(0);
+        scrollContent.getChildren().addAll(pianoContainer, gridPane);
+        scrollPane.setContent(scrollContent);
         
-        // 组装内容区域
-        contentArea.getChildren().addAll(pianoContainer, gridContainer);
-        mainContent.getChildren().add(contentArea);
-        VBox.setVgrow(mainContent, Priority.ALWAYS);
+        // 在GridHeader下方添加一个HBox来包含钢琴键区域的空白和实际的GridHeader
+        HBox headerArea = new HBox(0);
+        Region headerSpacer = new Region();
+        headerSpacer.setMinWidth(KEY_WIDTH);
+        headerSpacer.setPrefWidth(KEY_WIDTH);
+        headerSpacer.setMaxWidth(KEY_WIDTH);
+        headerArea.getChildren().addAll(headerSpacer, gridHeader);
+        
+        // 组装布局
+        mainContent.getChildren().addAll(headerArea, scrollPane);
+        
+        // 设置增长属性
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+        HBox.setHgrow(gridPane, Priority.ALWAYS);
         
         getChildren().addAll(toolbar, mainContent);
         
+        // 设置事件处理和初始化
         setupEventHandlers();
         setupKeyboardShortcuts();
         updateCanvasSize();
         drawPianoKeys();
         drawGrid();
+        
+        // 监听滚动变化
+        scrollPane.vvalueProperty().addListener((obs, oldVal, newVal) -> {
+            // 计算实际的滚动位置
+            double scrollableHeight = gridCanvas.getHeight() - scrollPane.getViewportBounds().getHeight();
+            double scrollY = newVal.doubleValue() * scrollableHeight;
+            
+            // 更新钢琴键的位置
+            pianoCanvas.setTranslateY(-scrollY);
+        });
+        
+        // 监听视口大小变化
+        scrollPane.viewportBoundsProperty().addListener((obs, oldBounds, newBounds) -> {
+            if (newBounds != null) {
+                updateCanvasSize();
+                drawGrid();
+                drawPianoKeys();
+            }
+        });
     }
 
     private HBox createToolbar() {
@@ -537,27 +565,26 @@ public class PianoRollFX extends VBox implements PianoRollInterface {
             totalWidth = Math.min(totalWidth, MAX_CANVAS_WIDTH);
             totalHeight = Math.min(totalHeight, MAX_CANVAS_HEIGHT);
             
-            // 设置最小尺寸
-            double minWidth = Math.max(1000, totalWidth);
-            double minHeight = Math.max(600, totalHeight);
-            
+            // 更新网格画布大小
             if (gridCanvas != null) {
-                gridCanvas.setWidth(minWidth);
-                gridCanvas.setHeight(minHeight);
+                gridCanvas.setWidth(Math.max(1000, totalWidth));
+                gridCanvas.setHeight(totalHeight);
             }
             
+            // 更新钢琴键画布大小
             if (pianoCanvas != null) {
-                pianoCanvas.setHeight(minHeight);
+                pianoCanvas.setHeight(totalHeight);
             }
             
+            // 更新网格头部大小
             if (gridHeader != null) {
-                gridHeader.setWidth(minWidth);
+                gridHeader.setWidth(Math.max(1000, totalWidth));
             }
             
-            // 更新gridPane的首选大小
+            // 确保gridPane的首选大小正确
             if (gridPane != null) {
-                gridPane.setPrefWidth(minWidth);
-                gridPane.setPrefHeight(minHeight);
+                gridPane.setPrefWidth(Math.max(1000, totalWidth));
+                gridPane.setPrefHeight(totalHeight);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -619,14 +646,14 @@ public class PianoRollFX extends VBox implements PianoRollInterface {
     }
 
     private void drawPianoKeys() {
-        pianoCanvas.setHeight(TOTAL_KEYS * KEY_HEIGHT * verticalZoom);
+        if (pianoCanvas == null) return;
+        
         GraphicsContext gc = pianoCanvas.getGraphicsContext2D();
         gc.clearRect(0, 0, pianoCanvas.getWidth(), pianoCanvas.getHeight());
         
-        // 从上到下渲染钢琴键（C10到C-1）
         for (int i = 0; i < TOTAL_KEYS; i++) {
             double y = i * KEY_HEIGHT * verticalZoom;
-            boolean isBlack = isBlackKey(TOTAL_KEYS - 1 - i); // 反转黑键判断
+            boolean isBlack = isBlackKey(TOTAL_KEYS - 1 - i);
             
             gc.setFill(isBlack ? Color.BLACK : Color.WHITE);
             gc.setStroke(Color.BLACK);
@@ -634,7 +661,7 @@ public class PianoRollFX extends VBox implements PianoRollInterface {
             gc.strokeRect(0, y, KEY_WIDTH, KEY_HEIGHT * verticalZoom);
             
             gc.setFill(isBlack ? Color.WHITE : Color.BLACK);
-            String noteName = getNoteNameForIndex(TOTAL_KEYS - 1 - i); // 反转音符名称
+            String noteName = getNoteNameForIndex(TOTAL_KEYS - 1 - i);
             gc.fillText(noteName, 5, y + KEY_HEIGHT * verticalZoom - 5);
         }
     }
